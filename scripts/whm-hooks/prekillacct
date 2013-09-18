@@ -1,0 +1,101 @@
+#! /bin/sh
+#==========================================================================
+#
+# http://whmscripts.net/accounts/2010/prekillacct-backup-cpanel-accounts-on-termination/
+# 
+#  Backup an account when it is deleted so it can be restored
+#
+#  We also backup other stuff:
+#   - zones (so we have the IP)
+#   - the domain names in a log file /etc/userdomains.deleted
+#   - the max emails per domain iff exists
+#   - local vs remotedomains status
+#
+# Modified 20130702 to only maintain 1 copy of backup --ssmith
+#==========================================================================
+ME=${0##*/}
+backupdir=/home/deleted_accounts
+#backupdir2=/home/deleted
+
+umask 077
+exec > /tmp/prekillacct.log 2>&1
+
+#
+#   Parse argument pairs
+#
+while [ $# != 0 ]
+do
+    eval cp_$1="$2"
+    shift 2
+done
+
+eval homedir='~'$cp_user
+
+#set | grep cp_  # debug - what args were we given
+
+test -d $backupdir || mkdir -p $backupdir
+
+#
+#   Save the user -> domainname mapping for future grepping
+#   otherwise this is very hard to find out
+#
+grep ": $cp_user\$" /etc/userdomains  >> $backupdir/userdomains.deleted
+cp $backupdir/userdomains.deleted /etc/userdomains.deleted
+
+# /etc/userdomains excerpt:
+# nzsnowstuff.com: snowstuf
+# nzsnowstuff.snowstuff.com.au: snowstuf
+# snowstuff.com.au: snowstuf
+
+#
+#   Backup a whole bunch of assorted files that don't get included normally
+#    - Backup a copy of the zone files in ~/.named_hostname
+#    - This is so we can find the former IP plus any other special IPs
+#
+hostname=$(hostname)
+namedir=$homedir/.named_$hostname
+test ! -d $namedir && mkdir $namedir
+grep ": $cp_user\$" /etc/userdomains |
+  while IFS=":$IFS" read domain u1
+  do
+    echo backing up $domain zone ...
+    # keep them owned by root
+    cp -p /var/named/${domain}.db $namedir
+
+    # backup MX hosting for domain as well ...
+    grep "^$domain$" /etc/localdomains /etc/remotedomains >> $homedir/.mxhost
+
+    # backup max email limit per domain
+    maxem=/var/cpanel/maxemailsperdomain/$domain
+    if [ -s $maxem ]
+    then
+	[ ! -d $homedir/.maxemails ] && mkdir $homedir/.maxemails
+        cp -p $maxem $homedir/.maxemails/.
+    fi
+  done
+
+
+#
+#   Backup the account itself
+#    ... do not overwrite a recent backup in case its important!
+#
+output=$backupdir/cpmove-${cp_user}.tar.gz
+if [ -f $output ] && [ "$(find $output -mtime 0 | wc -l)" -gt 0 ]
+then
+    echo
+    echo $ME: $cp_user: not overwriting original backup less than 24 hours old
+    echo
+else
+    /scripts/pkgacct $cp_user $backupdir
+fi
+
+
+#
+#   Maintain a backup of [all] deleted accounts in /home
+#   in case backup disk dies...
+#
+#rsync -av $backupdir/ $backupdir2
+
+chmod 700 $backupdir2
+
+exit 0

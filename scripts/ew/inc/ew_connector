@@ -1,0 +1,17 @@
+source ew.conf
+
+
+
+OUTPUT=${SCRIPT_PATH}/output
+
+echo $OUTPUT
+
+TIMESTAMP=$(date +"%Y%m%d%H%M")
+MONTH=$(date +"%Y%m")
+XMLACCOUNT="$OUTPUT/$TIMESTAMP-accounts.xml"
+XMLDOMAINS="$OUTPUT/$TIMESTAMP-domains.xml"
+XMLMBOX="$OUTPUT/$TIMESTAMP-mbox.xml"
+
+
+
+TOKEN=$(curl -s "https://$DASHBOARD/api/login?email=$DASHLOGIN&password=$DASHPASSWORD")
